@@ -23,3 +23,6 @@ db_user: myuser
 db_user_password: anotherreallylongpassword
 db_host: "%"
 db_dump_file: ""
+db_dump_overwrite: false
+db_dump_backup: true
+

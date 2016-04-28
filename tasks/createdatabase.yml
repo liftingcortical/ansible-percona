@@ -3,17 +3,58 @@
   mysql_db: name={{ db_name }} state=present collation={{ db_collation }}
   tags:
           - createdatabase
+  register: db_name_present
+
+- name: debug vars
+  debug: var=db_name_present verbosity=4
+
+- name: debug vars
+  debug: var=db_dump_overwrite verbosity=4
+
+- name: create temp filename
+  command: "date +%Y%m%d%H%M%S"
+  register: db_dump_backup_file
+
+- name: debug vars
+  debug: var=db_dump_backup_file verbosity=4
+
+- name: Dump existing if present and db_dump_overwrite is true
+  mysql_db: state=dump name={{ db_name }} target=/tmp/{{ db_name }}-{{ db_dump_backup_file.stdout }}.sql
+  when: db_dump_overwrite == True and db_name_present.changed == False and db_dump_backup == True
+  register: db_backup
+
+- name: debug db_backup
+  debug: var=db_backup verbosity=4
+  when: db_backup is defined and db_dump_overwrite == True and db_name_present.changed == False and db_dump_backup == True
+
+- name: fetch backup
+  fetch: 
+    src: "/tmp/{{ db_name }}-{{ db_dump_backup_file.stdout }}.sql"
+    dest: "./{{ ansible_hostname }}-{{ db_name }}-{{ db_dump_backup_file.stdout }}.sql"
+    flat: yes
+  when: db_backup is defined and db_backup.changed == True
 
 - name: Copy SQL dump file to the server
   copy: src={{ db_dump_file }} dest=/tmp
-  when: db_dump_file != ""
+  when: db_dump_file != "" and (db_name_present.changed == True or db_dump_overwrite == True)
   tags:
           - copydumpfile
           - dumpfile
 
+- name: Remove database if db_dump_overwrite
+  mysql_db: name={{ db_name }} state=absent
+  when: db_dump_file != "" and db_dump_overwrite == True
+  register: db_removed
+
+- name: Re-Create application database
+  mysql_db: name={{ db_name }} state=present collation={{ db_collation }}
+  tags:
+    - createdatabase
+  when: db_removed is defined and db_removed.changed == True
+
 - name: Dump file into the database
   mysql_db: name={{ db_name }} state=import target=/tmp/{{ db_dump_file | basename }}
-  when: db_dump_file != ""
+  when: db_dump_file != "" and (db_name_present.changed == True or db_dump_overwrite == True)
   tags:
           - dumpfile
 
